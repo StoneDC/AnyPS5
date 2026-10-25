@@ -2,7 +2,8 @@
 
 ### Unknown function info
 
-- [libSceLibreSsl3 pending exports](../../../core/libs/prx/libSceLibreSsl3/Export.cpp) - 84 named callable exports, excluding `CRYPTO_memcmp`, `MD5` and `SHA1`, remain unimplemented from the [PS5 3.20 export table](https://github.com/DNNDHH/PS5-3.20_Libs/blob/b2a77c09cd71c01f34c790cfbe98c751a13262ad/libSceLibreSsl3.c), cross-checked against the same module in PS5 firmware 13.60. Their signatures and behaviour are unverified; the declarations use the no-parameter unknown-signature convention and throw through `NotImplemented_nid_no_patch`.
+- [libSceLibreSsl3 pending exports](../../../core/libs/prx/libSceLibreSsl3/Export.cpp) - 83 named callable exports, excluding `CRYPTO_memcmp`, `MD5`, `SHA1` and `EVP_CIPHER_CTX_set_flags`, remain unimplemented from the [PS5 3.20 export table](https://github.com/DNNDHH/PS5-3.20_Libs/blob/b2a77c09cd71c01f34c790cfbe98c751a13262ad/libSceLibreSsl3.c), cross-checked against the same module in PS5 firmware 13.60. Their signatures and behaviour are unverified; the declarations use the no-parameter unknown-signature convention and throw through `NotImplemented_nid_no_patch`.
+- [EVP_CIPHER_CTX_set_flags](../../../core/libs/prx/libSceLibreSsl3/Export.cpp) - console signature, context layout and flag behaviour are unverified. The adapter follows LibreSSL 4.0.0's [evp_cipher.c](https://github.com/libressl/openbsd/blob/ce488b78e0bd994780569df718596b9776ff681a/src/lib/libcrypto/evp/evp_cipher.c#L861-L866) and [evp_local.h](https://github.com/libressl/openbsd/blob/ce488b78e0bd994780569df718596b9776ff681a/src/lib/libcrypto/evp/evp_local.h#L223-L239): a 160-byte LP64 context with 64-bit flags at offset 104, including sign extension of a negative `int` mask. A null context throws instead of being dereferenced. Context construction and complete cipher operation remain unimplemented in this module.
 
 ### Functional
 

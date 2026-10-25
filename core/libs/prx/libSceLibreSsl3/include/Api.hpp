@@ -2,6 +2,22 @@
 
 #include "SceTypes.hpp"
 
+struct LibreSsl3CipherContext {
+    const void* cipher;
+    std::int32_t encrypt;
+    std::int32_t partialLength;
+    unsigned char originalIv[16];
+    unsigned char iv[16];
+    unsigned char buffer[32];
+    std::int32_t num;
+    void* appData;
+    std::int32_t keyLength;
+    std::uint64_t flags;
+    void* cipherData;
+    std::int32_t finalUsed;
+    unsigned char finalBlock[32];
+};
+
 extern "C" {
 
 int APS5_VABI ASN1_INTEGER_free_nid_postfix(void);
@@ -18,7 +34,7 @@ int APS5_VABI EC_KEY_up_ref_nid_postfix(void);
 int APS5_VABI ERR_load_crypto_strings_nid_postfix(void);
 int APS5_VABI ERR_peek_last_error_nid_postfix(void);
 int APS5_VABI ERR_print_errors_cb_nid_postfix(void);
-int APS5_VABI EVP_CIPHER_CTX_set_flags_nid_postfix(void);
+void APS5_VABI EVP_CIPHER_CTX_set_flags_nid_postfix(LibreSsl3CipherContext* context, int flags);
 int APS5_VABI EVP_DigestInit_nid_postfix(void);
 int APS5_VABI EVP_DigestSignFinal_nid_postfix(void);
 int APS5_VABI EVP_DigestSignInit_nid_postfix(void);

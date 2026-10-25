@@ -1,8 +1,13 @@
 #include "prx/libSceLibreSsl3/include/Api.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+
+static_assert(sizeof(LibreSsl3CipherContext) == 160);
+static_assert(offsetof(LibreSsl3CipherContext, flags) == 104);
+static_assert(offsetof(LibreSsl3CipherContext, cipherData) == 112);
 
 extern "C" {
 
@@ -81,9 +86,10 @@ int APS5_VABI ERR_print_errors_cb_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI EVP_CIPHER_CTX_set_flags_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+void APS5_VABI EVP_CIPHER_CTX_set_flags_nid_postfix(LibreSsl3CipherContext* context, int flags) {
+    if (!context)
+        throw std::invalid_argument("EVP_CIPHER_CTX_set_flags: null context");
+    context->flags |= static_cast<std::uint64_t>(flags);
 }
 
 int APS5_VABI EVP_DigestInit_nid_postfix(void) {

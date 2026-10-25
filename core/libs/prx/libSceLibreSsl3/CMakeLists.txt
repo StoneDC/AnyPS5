@@ -15,8 +15,16 @@ if(BUILD_TESTING)
     configure_windows_unwind(guest_libressl3_digest_tests)
     add_test(NAME guest_libressl3_digest COMMAND guest_libressl3_digest_tests)
     set_tests_properties(guest_libressl3_digest PROPERTIES TIMEOUT 30)
+
+    add_test_executable(guest_libressl3_cipher_flags_tests ${LIBS_INCLUDE_DIR}/tests/GuestLibreSsl3CipherFlags.cpp)
+    target_include_directories(guest_libressl3_cipher_flags_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_libressl3_cipher_flags_tests PRIVATE libSceLibreSsl3 libc)
+    configure_windows_unwind(guest_libressl3_cipher_flags_tests)
+    add_test(NAME guest_libressl3_cipher_flags COMMAND guest_libressl3_cipher_flags_tests)
+    set_tests_properties(guest_libressl3_cipher_flags PROPERTIES TIMEOUT 20)
+
     if(WIN32)
-        set_tests_properties(guest_crypto_memcmp guest_libressl3_digest PROPERTIES ENVIRONMENT_MODIFICATION
+        set_tests_properties(guest_crypto_memcmp guest_libressl3_digest guest_libressl3_cipher_flags PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceLibreSsl3>")
     endif()
 endif()
