@@ -301,4 +301,4 @@ class CheckMainSyncTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(defaultTest=os.environ.get("CHECK_MAIN_SYNC_TEST"))
