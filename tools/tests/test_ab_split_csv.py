@@ -53,15 +53,35 @@ class AbCsvTests(unittest.TestCase):
             self.assertEqual(original.returncode, 0, original.stderr)
             expected = ab_split_csv.render(json.loads(original.stdout)).encode("utf-8")
             self.assertEqual(completed.stdout, expected)
-            path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
-            bom = subprocess.run(command, capture_output=True)
-            self.assertEqual(bom.returncode, 0, bom.stderr)
-            self.assertEqual(bom.stdout, expected)
+
+    def test_bom_before_configuration_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.txt"
+            lines = log()[1:]
+            self.assertTrue(lines[0].startswith("[ab] in-run A/B:"))
+            path.write_bytes(b"\xef\xbb\xbf" + "".join(lines).encode("utf-8"))
+            completed = subprocess.run([sys.executable, str(Path(ab_split_csv.__file__)), str(path)], capture_output=True)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            expected = ab_split_csv.render(ab_split.split(lines)).encode("utf-8")
+            self.assertEqual(completed.stdout, expected)
+
+    def test_cli_preserves_producer_decoding_and_line_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.txt"
+            for prefix in (b"guest stderr \xff\n", b"guest stderr \x0c", "guest stderr \u2028".encode("utf-8")):
+                with self.subTest(prefix=prefix):
+                    path.write_bytes(prefix + "".join(log()[1:]).encode("utf-8"))
+                    completed = subprocess.run([sys.executable, str(Path(ab_split_csv.__file__)), str(path)], capture_output=True)
+                    original = subprocess.run([sys.executable, str(Path(ab_split.__file__)), str(path), "--json"], capture_output=True)
+                    self.assertEqual(original.returncode, 0, original.stderr)
+                    self.assertEqual(completed.returncode, 0, completed.stderr)
+                    expected = ab_split_csv.render(json.loads(original.stdout)).encode("utf-8")
+                    self.assertEqual(completed.stdout, expected)
 
     def test_invalid_inputs_emit_no_csv(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "log.txt"
-            for contents, arguments in ((None, []), (b"no phases\n", []), (b"\xff", []), (b"unused", ["--program", "bad"])):
+            for contents, arguments in ((None, []), (b"no phases\n", []), (b"unused", ["--program", "bad"])):
                 if contents is not None:
                     path.write_bytes(contents)
                 completed = subprocess.run([sys.executable, str(Path(ab_split_csv.__file__)), str(path), *arguments], capture_output=True)
