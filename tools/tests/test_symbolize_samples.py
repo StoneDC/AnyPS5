@@ -549,13 +549,16 @@ class SymbolizeSamplesTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "counters decreased"):
                     symbolize_samples.validate_window(later, earlier)
                 self.assertFalse(getattr(symbolize_samples.window(later, earlier), category))
+                getattr(later, category)[key] = 5
+                symbolize_samples.validate_window(later, earlier)
 
     def test_strict_window_cli_is_opt_in_and_rejects_before_writing_output(self):
         record = f"# module libSceAgcDriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n"
         later, earlier, output = self.root / "later.txt", self.root / "earlier.txt", self.root / "output.txt"
         later.write_text(record + "libSceAgcDriver.prx+0x1011 7\n", encoding="utf-8")
         command = [sys.executable, symbolize_samples.__file__, str(later), "--libs", str(self.libs), "--out", str(output)]
-        for previous in (record.replace(f"{TIMESTAMP:#x}", "0x1"), ""):
+        for previous, current in ((record.replace(f"{TIMESTAMP:#x}", "0x1"), record), ("", record), (record, "")):
+            later.write_text(current + "libSceAgcDriver.prx+0x1011 7\n", encoding="utf-8")
             earlier.write_text(previous + "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
             output.write_text("previous output", encoding="utf-8")
             strict = subprocess.run(command + ["--since", str(earlier), "--require-matching-window"], capture_output=True, text=True, timeout=5)
@@ -566,7 +569,12 @@ class SymbolizeSamplesTests(unittest.TestCase):
             default = subprocess.run(command + ["--since", str(earlier)], capture_output=True, text=True, timeout=5)
             self.assertEqual(default.returncode, 0, default.stderr)
             self.assertIn("3 samples", default.stdout)
+        later.write_text(record + "libSceAgcDriver.prx+0x1011 7\nlibOther.prx 0x20 1 1\n", encoding="utf-8")
         earlier.write_text(record + "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
+        unrecorded = subprocess.run(command + ["--since", str(earlier), "--require-matching-window"], capture_output=True, text=True, timeout=5)
+        self.assertEqual(unrecorded.returncode, 2, unrecorded.stderr)
+        self.assertIn("libOther.prx", unrecorded.stderr)
+        later.write_text(record + "libSceAgcDriver.prx+0x1011 7\n", encoding="utf-8")
         matched = subprocess.run(command + ["--since", str(earlier), "--require-matching-window"], capture_output=True, text=True, timeout=5)
         self.assertEqual(matched.returncode, 0, matched.stderr)
         self.assertIn("3 samples", matched.stdout)
