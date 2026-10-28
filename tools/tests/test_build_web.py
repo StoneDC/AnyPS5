@@ -183,6 +183,53 @@ class LibraryPublicationTests(unittest.TestCase):
         self.assertFalse(any(file.suffix == ".download" for file in self.libraries.iterdir()))
 
 
+    def test_failed_manifest_replacement_preserves_the_previous_release_and_retries(self):
+        valid = library_zip([("libs/libc.prx", b"valid")])
+        original = Path.replace
+        def fail_manifest(source, destination):
+            if destination == self.manifest:
+                self.assertNotEqual(source, destination)
+                self.assertIn("platforms", json.loads(source.read_text(encoding="utf-8")))
+                raise OSError("manifest is busy")
+            return original(source, destination)
+        with patch.object(Path, "replace", fail_manifest), self.assertRaisesRegex(OSError, "manifest is busy"):
+            self.publish(valid, valid)
+        self.assertEqual(self.manifest.read_bytes(), self.previous)
+        self.assertFalse(list(self.output.glob(".release-*")))
+        self.publish(valid, valid)
+        self.assertEqual(json.loads(self.manifest.read_text(encoding="utf-8"))["tag"], "v1")
+
+    def test_partial_manifest_write_preserves_the_previous_file(self):
+        original = Path.write_text
+        def interrupted(path, text, *args, **kwargs):
+            if path.name == "release.json":
+                original(path, text[:5], *args, **kwargs)
+                raise OSError("disk full")
+            return original(path, text, *args, **kwargs)
+        valid = library_zip([("libs/libc.prx", b"valid")])
+        with patch.object(Path, "write_text", interrupted), self.assertRaisesRegex(OSError, "disk full"):
+            self.publish(valid, valid)
+        self.assertEqual(self.manifest.read_bytes(), self.previous)
+        self.assertFalse(list(self.output.glob(".release-*")))
+
+    def test_manifest_replacement_preserves_permissions_and_follows_existing_links(self):
+        if os.name == "posix":
+            self.manifest.chmod(0o640)
+        build_web.write_manifest(self.manifest, "complete\n")
+        if os.name == "posix":
+            self.assertEqual(self.manifest.stat().st_mode & 0o777, 0o640)
+        target = self.output / "linked.json"
+        target.write_text("previous", encoding="utf-8")
+        self.manifest.unlink()
+        try:
+            self.manifest.symlink_to(target)
+        except OSError:
+            return
+        build_web.write_manifest(self.manifest, "replacement\n")
+        self.assertTrue(self.manifest.is_symlink())
+        self.assertEqual(target.read_text(encoding="utf-8"), "replacement\n")
+
+
 class BuildWebCliTests(unittest.TestCase):
     def test_missing_relinker_wasm_reports_error_without_traceback(self):
         with tempfile.TemporaryDirectory() as directory:

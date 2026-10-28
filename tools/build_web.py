@@ -68,6 +68,19 @@ def library_assets(release):
     return assets
 
 
+def write_manifest(path, text):
+    path = path.resolve()
+    mode = path.stat().st_mode & 0o777 if path.exists() else None
+    if mode is not None and not mode & 0o222:
+        raise PermissionError(f"Manifest is read-only: {path}")
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix=".release-") as directory:
+        temporary = Path(directory) / "release.json"
+        temporary.write_text(text, encoding="utf-8")
+        if mode is not None:
+            temporary.chmod(mode)
+        temporary.replace(path)
+
+
 def publish_libraries(output, release=None):
     if release is None:
         with request("https://api.github.com/repos/boykopovar/AnyPS5/releases/latest") as response:
@@ -130,7 +143,7 @@ def publish_libraries(output, release=None):
             raise ValueError(f"Invalid release archive {asset['name']}: {error}") from error
         finally:
             temporary.unlink(missing_ok=True)
-    (output / "release.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    write_manifest(output / "release.json", json.dumps(manifest, indent=2) + "\n")
     print(f"Published library assets from {tag}")
 
 
