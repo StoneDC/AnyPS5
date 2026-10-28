@@ -41,11 +41,18 @@ def images():
 def main():
     parser = argparse.ArgumentParser(description="Write relinker test fixtures as relinker_conversion_fuzzer seeds")
     parser.add_argument("output", type=Path)
+    parser.add_argument("--all-configurations", action="store_true", help="cover every distinct fuzzer selector configuration")
     arguments = parser.parse_args()
+    selectors = SELECTORS
+    if arguments.all_configurations:
+        configurations = {}
+        for selector in range(256):
+            configurations.setdefault((selector % 3, bool(selector & 4), (selector >> 3) % 3), selector)
+        selectors = tuple(configurations.values())
     arguments.output.mkdir(parents=True, exist_ok=True)
     count = 0
     for name, data in images():
-        for selector in SELECTORS:
+        for selector in selectors:
             (arguments.output / f"{name}-{selector}").write_bytes(bytes([selector]) + data)
             count += 1
     print(f"{count} seeds written to {arguments.output}")
