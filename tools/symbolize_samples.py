@@ -261,6 +261,25 @@ def subtract(later, earlier):
     return collections.Counter({key: count for key, count in result.items() if count > 0})
 
 
+def validate_window(later, earlier):
+    modules = {name for samples in (earlier, later) for counts in (samples.self_counts, samples.inclusive) for name, _ in counts}
+    for samples in (earlier, later):
+        for frames in samples.stacks:
+            for frame in frames.split(";"):
+                name, separator, _ = frame.partition("+0x")
+                if separator:
+                    modules.add(name)
+    for name in sorted(modules):
+        if name not in later.headers or name not in earlier.headers:
+            raise ValueError(f"{name}: matching-window validation needs module records in both captures")
+        if later.headers[name] != earlier.headers[name]:
+            raise ValueError(f"{name}: module identity differs between captures")
+    for name in ("stacks", "self_counts", "inclusive", "total"):
+        before, after = getattr(earlier, name), getattr(later, name)
+        if any(count < 0 for count in after.values()) or any(count < 0 or after[key] < count for key, count in before.items()):
+            raise ValueError(f"{name}: cumulative sample counters decreased between captures")
+
+
 def window(later, earlier):
     result = Samples()
     result.headers = dict(later.headers)
@@ -322,7 +341,12 @@ def main(argv=None):
     parser.add_argument("--thread", help="keep only this thread of an APS5_SAMPLE_THREADS file")
     parser.add_argument("--unverified", action="store_true", help="also symbolize modules the samples have no '# module' record for")
     parser.add_argument("--json", action="store_true", help="write counts, symbols and module identity status as JSON; --out still writes collapsed stacks")
+
+    parser.add_argument("--require-matching-window", action="store_true",
+                        help="with --since, require matching module records and nondecreasing cumulative counters; records cannot prove a common process")
     args = parser.parse_args(argv)
+    if args.require_matching_window and not args.since:
+        parser.error("--require-matching-window needs --since")
     if args.out:
         output = Path(args.out)
         for source in (args.samples, args.since):
@@ -332,7 +356,13 @@ def main(argv=None):
                     parser.error("symbolized output must be separate from the sample captures")
     samples = load(args.samples, args.thread)
     if args.since:
-        samples = window(samples, load(args.since, args.thread))
+        earlier = load(args.since, args.thread)
+        if args.require_matching_window:
+            try:
+                validate_window(samples, earlier)
+            except ValueError as error:
+                parser.error(str(error))
+        samples = window(samples, earlier)
     if args.out and samples.stacks:
         referenced_modules = {name.lower() for name, _ in samples.self_counts}
         referenced_modules.update(name.lower() for name, _ in samples.inclusive)
