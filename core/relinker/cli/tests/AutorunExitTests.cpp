@@ -89,7 +89,7 @@ int main(int, char* argv[]) {
         std::filesystem::create_symlink(executable, child);
         const auto changed = changeTime(executable);
 #endif
-        for (const char* value : {"1", "0", "yes", ""}) {
+        for (const char* value : {"1", "0", "yes", "", "10", "1 "}) {
             SetNoPause(value);
             std::istringstream pending("\nremaining");
             auto* originalInput = std::cin.rdbuf(pending.rdbuf());
