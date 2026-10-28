@@ -483,6 +483,47 @@ class SymbolizeSamplesTests(unittest.TestCase):
         self.assertEqual(blocked.read_bytes(), original)
 
 
+    def test_strict_window_checks_identity_and_all_cumulative_counter_categories(self):
+        import collections
+        for category, key in (("stacks", "lib.prx+0x10"), ("self_counts", ("lib.prx", "0x10")),
+                              ("inclusive", ("lib.prx", "0x10")), ("total", "samples")):
+            with self.subTest(category=category):
+                earlier, later = symbolize_samples.Samples(), symbolize_samples.Samples()
+                earlier.headers = later.headers = {"lib.prx": (100, 200)}
+                setattr(earlier, category, collections.Counter({key: 5}))
+                setattr(later, category, collections.Counter({key: 7}))
+                symbolize_samples.validate_window(later, earlier)
+                self.assertEqual(getattr(symbolize_samples.window(later, earlier), category)[key], 2)
+                getattr(later, category)[key] = 4
+                with self.assertRaisesRegex(ValueError, "counters decreased"):
+                    symbolize_samples.validate_window(later, earlier)
+                self.assertFalse(getattr(symbolize_samples.window(later, earlier), category))
+
+    def test_strict_window_cli_is_opt_in_and_rejects_before_writing_output(self):
+        record = f"# module libSceAgcDriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n"
+        later, earlier, output = self.root / "later.txt", self.root / "earlier.txt", self.root / "output.txt"
+        later.write_text(record + "libSceAgcDriver.prx+0x1011 7\n", encoding="utf-8")
+        command = [sys.executable, symbolize_samples.__file__, str(later), "--libs", str(self.libs), "--out", str(output)]
+        for previous in (record.replace(f"{TIMESTAMP:#x}", "0x1"), ""):
+            earlier.write_text(previous + "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
+            output.write_text("previous output", encoding="utf-8")
+            strict = subprocess.run(command + ["--since", str(earlier), "--require-matching-window"], capture_output=True, text=True, timeout=5)
+            self.assertEqual(strict.returncode, 2, strict.stderr)
+            self.assertEqual(strict.stdout, "")
+            self.assertNotIn("Traceback", strict.stderr)
+            self.assertEqual(output.read_text(encoding="utf-8"), "previous output")
+            default = subprocess.run(command + ["--since", str(earlier)], capture_output=True, text=True, timeout=5)
+            self.assertEqual(default.returncode, 0, default.stderr)
+            self.assertIn("3 samples", default.stdout)
+        earlier.write_text(record + "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
+        matched = subprocess.run(command + ["--since", str(earlier), "--require-matching-window"], capture_output=True, text=True, timeout=5)
+        self.assertEqual(matched.returncode, 0, matched.stderr)
+        self.assertIn("3 samples", matched.stdout)
+        missing = subprocess.run(command + ["--require-matching-window"], capture_output=True, text=True, timeout=5)
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("needs --since", missing.stderr)
+
+
 class CandidateModuleTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
