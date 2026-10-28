@@ -218,6 +218,24 @@ class SanitizerReportTests(unittest.TestCase):
         self.assertIn("| Failed test |\n| - |\n| `plain` |\n", stdout)
 
 
+    def test_names_remain_literal_in_every_summary_table(self):
+        import html
+        names = ("one|two", "`fence`", "line\nnext\rreturn", "\\|<script>&中文")
+        for name in names:
+            for details, known, outcome in (({}, {}, "failed"), ({name: "report"}, {}, "failed"),
+                                            ({}, {name: "reason"}, "failed"), ({}, {name: "reason"}, "passed"),
+                                            ({}, {name: "reason"}, None)):
+                with self.subTest(name=name, outcome=outcome, details=bool(details)):
+                    found = {name: outcome} if outcome else {"ordinary": "passed"}
+                    text, failing = sanitizer_report.summarize("ASan", found, known, details)
+                    rows = [line for line in text.splitlines() if line.startswith("| <code>")]
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0].count("|"), 3 if known and outcome or details else 2)
+                    encoded = rows[0].split("<code>", 1)[1].split("</code>", 1)[0]
+                    self.assertEqual(html.unescape(encoded), name.replace("\r", r"\r").replace("\n", r"\n"))
+                    self.assertEqual(failing, outcome == "failed" and not known)
+
+
 
 class RepositoryKnownFailuresTests(unittest.TestCase):
     def test_every_entry_parses(self):
