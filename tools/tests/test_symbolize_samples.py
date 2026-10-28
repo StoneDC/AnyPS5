@@ -483,6 +483,58 @@ class SymbolizeSamplesTests(unittest.TestCase):
         self.assertEqual(blocked.read_bytes(), original)
 
 
+    def test_json_and_text_share_counts_for_real_pe_symbols_and_unknown_modules(self):
+        import json
+        record = f"# module libSceAgcDriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n"
+        later, earlier, output = self.root / "later.txt", self.root / "earlier.txt", self.root / "symbolized.txt"
+        later.write_text(record + "libSceAgcDriver.prx+0x1011;unknown.dll+0x10 7\nlibSceAgcDriver.prx+0x1041 2\n", encoding="utf-8")
+        earlier.write_text(record + "libSceAgcDriver.prx+0x1011;unknown.dll+0x10 4\n", encoding="utf-8")
+        command = [sys.executable, symbolize_samples.__file__, str(later), "--since", str(earlier), "--libs", str(self.libs)]
+        plain = subprocess.run(command, capture_output=True, text=True, timeout=5)
+        encoded = subprocess.run(command + ["--json", "--out", str(output)], capture_output=True, text=True, timeout=5)
+        self.assertEqual(plain.returncode, 0, plain.stderr)
+        self.assertEqual(encoded.returncode, 0, encoded.stderr)
+        report = json.loads(encoded.stdout)
+        self.assertEqual(report["samples"], 5)
+        self.assertEqual(report["self"], [{"symbol": "unknown.dll+0x10", "count": 3}, {"symbol": "libSceAgcDriver.prx!AgcDriver_long_function_name", "count": 2}])
+        for category in ("self", "inclusive"):
+            for row in report[category]:
+                self.assertIn(f"{row['count']:8d}", plain.stdout)
+                self.assertIn(row["symbol"], plain.stdout)
+        self.assertEqual(report["modules"], [
+            {"name": "libSceAgcDriver.prx", "candidate_accepted": True, "identity_recorded": True, "identity_matches": True},
+            {"name": "unknown.dll", "candidate_accepted": False, "identity_recorded": False, "identity_matches": False}])
+        self.assertIn("unknown.dll+0x10 3", output.read_text(encoding="utf-8"))
+
+    def test_json_address_counts_respect_thread_filter_and_unverified_option(self):
+        import json
+        samples = self.root / "threads.txt"
+        samples.write_text("thread 1 samples 10\nlibSceAgcDriver.prx 0x1011 2 4\nthread 2 samples 20\nlibSceAgcDriver.prx 0x1041 3 6\n", encoding="utf-8")
+        command = [sys.executable, symbolize_samples.__file__, str(samples), "--libs", str(self.libs), "--thread", "2", "--json"]
+        for unverified in (False, True):
+            result = subprocess.run(command + (["--unverified"] if unverified else []), capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(report["samples"], 20)
+            self.assertEqual(report["self"][0]["count"], 3)
+            self.assertEqual(report["inclusive"][0]["count"], 6)
+            self.assertEqual(report["modules"][0]["candidate_accepted"], unverified)
+            self.assertFalse(report["modules"][0]["identity_recorded"])
+            self.assertFalse(report["modules"][0]["identity_matches"])
+
+
+    def test_json_accepts_a_matching_pe_without_inventing_symbol_names(self):
+        import json
+        build_pe(self.libs / "empty.prx", with_symbols=False)
+        samples = self.root / "empty-symbols.txt"
+        samples.write_text(f"# module empty.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\nempty.prx+0x1011 2\n", encoding="utf-8")
+        result = subprocess.run([sys.executable, symbolize_samples.__file__, str(samples), "--libs", str(self.libs), "--json"], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["self"], [{"symbol": "empty.prx+0x1011", "count": 2}])
+        self.assertEqual(report["modules"], [{"name": "empty.prx", "candidate_accepted": True, "identity_recorded": True, "identity_matches": True}])
+
+
 class CandidateModuleTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
