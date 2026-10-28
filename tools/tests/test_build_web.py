@@ -280,5 +280,35 @@ class ReleaseMetadataTests(unittest.TestCase):
                     self.assertEqual(list(root.iterdir()), [existing])
 
 
+    def test_deeply_nested_api_responses_are_cli_errors_without_site_changes(self):
+        deep_json = b"[" * (sys.getrecursionlimit() * 2) + b"]" * (sys.getrecursionlimit() * 2)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            web = root / "web"
+            web.mkdir()
+            preserved = web / "keep.txt"
+            preserved.write_bytes(b"previous site")
+            errors, output = io.StringIO(), io.StringIO()
+            with patch.object(build_web, "request", return_value=io.BytesIO(deep_json)), \
+                    contextlib.redirect_stderr(errors), contextlib.redirect_stdout(output):
+                with self.assertRaises(SystemExit) as raised:
+                    build_web.main(["--build", str(root), "--release"])
+            self.assertEqual(raised.exception.code, 2)
+            self.assertNotIn("Traceback", errors.getvalue())
+            self.assertIn("release", errors.getvalue().lower())
+            self.assertEqual(output.getvalue(), "")
+            self.assertEqual(preserved.read_bytes(), b"previous site")
+            self.assertEqual(list(root.iterdir()), [web])
+            self.assertEqual(list(web.iterdir()), [preserved])
+
+    def test_deeply_nested_release_metadata_in_libraries_raises_value_error(self):
+        deep_json = b"[" * (sys.getrecursionlimit() * 2) + b"]" * (sys.getrecursionlimit() * 2)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(build_web, "request", return_value=io.BytesIO(deep_json)):
+                with self.assertRaisesRegex(ValueError, "release metadata"):
+                    build_web.publish_libraries(root)
+
+
 if __name__ == "__main__":
     unittest.main()

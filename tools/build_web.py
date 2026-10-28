@@ -68,10 +68,17 @@ def library_assets(release):
     return assets
 
 
+def load_release(response):
+    try:
+        return json.load(response)
+    except RecursionError as error:
+        raise ValueError(f"Invalid release metadata: {error}") from error
+
+
 def publish_libraries(output, release=None):
     if release is None:
         with request("https://api.github.com/repos/boykopovar/AnyPS5/releases/latest") as response:
-            release = json.load(response)
+            release = load_release(response)
     release = release_metadata(release)
     tag = release["tag_name"]
     if not re.fullmatch(r"v[0-9A-Za-z][0-9A-Za-z._-]*", tag):
@@ -136,7 +143,7 @@ def publish_libraries(output, release=None):
 
 def publish_release(output):
     with request("https://api.github.com/repos/boykopovar/AnyPS5/releases/latest") as response:
-        release = json.load(response)
+        release = load_release(response)
     release = release_metadata(release)
     tag = release["tag_name"]
     if not re.fullmatch(r"v[0-9A-Za-z][0-9A-Za-z._-]*", tag) or tag.endswith("."):
