@@ -114,6 +114,31 @@ void run(const std::filesystem::path& root) {
     std::filesystem::create_directories(root / "badpng" / "out");
     requireFailure(badPngSceSys, root / "badpng" / "out" / "game", "icon0.png");
 
+    const auto structurallyBad = root / "invalid-structure" / "sce_sys";
+    const auto untouched = root / "invalid-structure" / "out" / "game";
+    std::vector<std::vector<std::uint8_t>> invalid;
+    auto zeroWidth = Png;
+    zeroWidth[19] = 0;
+    invalid.push_back(zeroWidth);
+    auto badCrc = Png;
+    badCrc[32] ^= 1;
+    invalid.push_back(badCrc);
+    auto noData = Png;
+    noData.erase(noData.begin() + 33, noData.end() - 12);
+    invalid.push_back(noData);
+    auto truncated = Png;
+    truncated.pop_back();
+    invalid.push_back(truncated);
+    auto noEnd = Png;
+    noEnd.resize(noEnd.size() - 12);
+    invalid.push_back(noEnd);
+    for (const auto& bytes : invalid) {
+        writeBytes(structurallyBad / "icon0.png", bytes);
+        requireFailure(structurallyBad, untouched, "icon0.png");
+    }
+    writeBytes(structurallyBad / "icon0.png", Png);
+    require(Elfpatcher::Linux::LinuxDesktopEntryWriter().Prepare(structurallyBad, untouched).has_value(), "Valid PNG retry failed");
+
     const auto badParamSceSys = root / "badparam" / "game" / "sce_sys";
     writeBytes(badParamSceSys / "icon0.png", Png);
     writeText(badParamSceSys / "param.json", "{");
