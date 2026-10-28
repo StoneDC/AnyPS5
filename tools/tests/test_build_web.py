@@ -281,7 +281,7 @@ class ReleaseMetadataTests(unittest.TestCase):
 
 
     def test_deeply_nested_api_responses_are_cli_errors_without_site_changes(self):
-        deep_json = b"[" * (sys.getrecursionlimit() * 2) + b"]" * (sys.getrecursionlimit() * 2)
+        deep_json = b"[" * 200000 + b"]" * 200000
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             web = root / "web"
@@ -302,12 +302,39 @@ class ReleaseMetadataTests(unittest.TestCase):
             self.assertEqual(list(web.iterdir()), [preserved])
 
     def test_deeply_nested_release_metadata_in_libraries_raises_value_error(self):
-        deep_json = b"[" * (sys.getrecursionlimit() * 2) + b"]" * (sys.getrecursionlimit() * 2)
+        deep_json = b"[" * 200000 + b"]" * 200000
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch.object(build_web, "request", return_value=io.BytesIO(deep_json)):
                 with self.assertRaisesRegex(ValueError, "release metadata"):
                     build_web.publish_libraries(root)
+
+    def test_deeply_nested_web_release_metadata_is_cli_error_without_site_changes(self):
+        deep_json = b"[" * 200000 + b"]" * 200000
+        entries = [(name, b"x") for name in build_web.WEB_FILES] + [("web-release.json", deep_json)]
+        data = library_zip(entries)
+        release = {"tag_name": "v1", "html_url": "https://example.invalid/v1", "assets": [
+            {"name": "web-v1.zip", "size": len(data), "browser_download_url": "https://example.invalid/web",
+             "digest": "sha256:" + hashlib.sha256(data).hexdigest()},
+            *({"name": f"prx-{platform}-v1.zip", "size": 10, "browser_download_url": "https://example.invalid/prx", "digest": None}
+              for platform in ("windows", "linux"))]}
+        responses = [io.BytesIO(json.dumps(release).encode()), io.BytesIO(data)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            web = root / "web"
+            web.mkdir()
+            preserved = web / "keep.txt"
+            preserved.write_bytes(b"previous site")
+            errors = io.StringIO()
+            with patch.object(build_web, "request", side_effect=responses), \
+                    contextlib.redirect_stderr(errors), contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    build_web.main(["--build", str(root), "--release"])
+            self.assertEqual(raised.exception.code, 2)
+            self.assertNotIn("Traceback", errors.getvalue())
+            self.assertIn("release metadata", errors.getvalue())
+            self.assertEqual(preserved.read_bytes(), b"previous site")
+            self.assertEqual(list(root.iterdir()), [web])
 
 
 if __name__ == "__main__":

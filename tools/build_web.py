@@ -179,7 +179,7 @@ def publish_release(output):
                 raise ValueError(f"Encrypted release archive {asset['name']} is not supported")
             if any(file.file_size == 0 for file in files) or sum(file.file_size for file in files) > 128 * 1024 * 1024:
                 raise ValueError("Invalid expanded web release archive size")
-            metadata = json.loads(archive.read("web-release.json"))
+            metadata = load_release(archive.open("web-release.json"))
             if (not isinstance(metadata, dict) or metadata.get("tag") != tag
                     or not isinstance(metadata.get("revision"), str)
                     or not re.fullmatch(r"[0-9a-f]{40}", metadata["revision"])):
