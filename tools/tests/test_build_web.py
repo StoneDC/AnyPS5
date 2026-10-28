@@ -187,7 +187,7 @@ class LibraryPublicationTests(unittest.TestCase):
         valid = library_zip([("libs/libc.prx", b"valid")])
         original = Path.replace
         def fail_manifest(source, destination):
-            if destination == self.manifest:
+            if destination == self.manifest.resolve():
                 self.assertNotEqual(source, destination)
                 self.assertIn("platforms", json.loads(source.read_text(encoding="utf-8")))
                 raise OSError("manifest is busy")
