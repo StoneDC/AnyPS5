@@ -250,5 +250,32 @@ class MainTests(unittest.TestCase):
         self.assertEqual(err.errors, "backslashreplace")
 
 
+
+class LabelPlanJsonTests(unittest.TestCase):
+    def test_json_requires_dry_run_before_any_access(self):
+        with patch.object(pr_labels, "gh", side_effect=AssertionError("unexpected access")), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            pr_labels.main(["--pr", "42", "--json"])
+        self.assertEqual(error.exception.code, 2)
+
+    def test_plan_reads_only_and_records_comment(self):
+        data = {"number": 42, "title": "perf(core): reduce work", "body": "", "labels": [], "state": "open"}
+        calls = []
+        def gh(*args):
+            calls.append(args)
+            if args == ("api", "repos/test/repo/pulls/42"):
+                return json.dumps(data)
+            if args[:2] == ("api", "--paginate"):
+                return "0"
+            raise AssertionError(args)
+        output = io.StringIO()
+        with patch.object(pr_labels, "repository", return_value="test/repo"), patch.object(pr_labels, "gh", side_effect=gh), contextlib.redirect_stdout(output):
+            self.assertEqual(pr_labels.main(["--pr", "42", "--dry-run", "--json"]), 0)
+        row = json.loads(output.getvalue())["plans"][0]
+        self.assertEqual(row["add"], sorted([pr_labels.PERF_LABEL, pr_labels.MISSING_LABEL]))
+        self.assertEqual(row["remove"], [])
+        self.assertEqual(row["comment_marker"], pr_labels.MARKER)
+        self.assertEqual(len(calls), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
