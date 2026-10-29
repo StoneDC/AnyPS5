@@ -329,6 +329,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.require_matching_window and not args.since:
         parser.error("--require-matching-window needs --since")
+    try:
+        return symbolize(parser, args)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+
+
+def symbolize(parser, args):
     if args.out:
         output = Path(args.out)
         for source in (args.samples, args.since):
