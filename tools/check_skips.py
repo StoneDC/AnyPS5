@@ -1,4 +1,5 @@
 import sys
+import json
 import argparse
 import re
 import xml.etree.ElementTree as ET
@@ -63,7 +64,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="fail when a test is skipped that the job's device is not expected to skip")
     parser.add_argument("junit", type=Path, help="the file written by ctest --output-junit")
     parser.add_argument("--job", choices=("linux", "windows"), default="linux")
-    parser.add_argument("--list", action="store_true", help="print the skipped tests and why the file says they skipped")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="emit skip reasons and policy decisions as JSON")
+    output.add_argument("--list", action="store_true", help="print the skipped tests and why the file says they skipped")
     parser.add_argument("--require-tests", action="store_true", help="fail if the report contains no testcases")
     args = parser.parse_args(argv)
     try:
@@ -77,11 +80,17 @@ def main(argv=None):
             print(f"{name}: {reason}")
         return 0
     if args.job == "windows":
-        unexpected = [name for name, output in found if not name.startswith(WINDOWS_PREFIX) and not device_limitations(output, (NO_DISPLAY, NO_VULKAN_DEVICE)) and not high_refresh_limitation(output)]
+        allowed = lambda name, output: name.startswith(WINDOWS_PREFIX) or device_limitations(output, (NO_DISPLAY, NO_VULKAN_DEVICE)) or high_refresh_limitation(output)
         expected = f"any {WINDOWS_PREFIX}* test, which the runner has no Vulkan driver for, or a test that reports no display or Vulkan device or a display without a 120 Hz mode"
     else:
-        unexpected = [name for name, output in found if not device_limitations(output, (DEVICE_LIMITATION,)) and not high_refresh_limitation(output)]
+        allowed = lambda name, output: device_limitations(output, (DEVICE_LIMITATION,)) or high_refresh_limitation(output)
         expected = "any test that reports the device limitation it needs, such as narrow subgroups, a missing extension, no display for a Vulkan window or a display without a 120 Hz mode"
+    unexpected = [name for name, output in found if not allowed(name, output)]
+    if args.json:
+        print(json.dumps({"job": args.job, "skips": [
+            {"name": name, "output": output, "expected": allowed(name, output)}
+            for name, output in found], "unexpected": unexpected}, sort_keys=True))
+        return int(bool(unexpected))
     for name in unexpected:
         print(f"error: {name} skipped")
     if unexpected:
