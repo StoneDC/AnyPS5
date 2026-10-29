@@ -2,6 +2,7 @@ import os
 import subprocess
 from pathlib import Path
 import contextlib
+import html
 import io
 import sys
 import tempfile
@@ -246,8 +247,7 @@ class SanitizerReportTests(unittest.TestCase):
 
 
     def test_names_remain_literal_in_every_summary_table(self):
-        import html
-        names = ("one|two", "`fence`", "line\nnext\rreturn", "\\|<script>&中文")
+        names = ("one|two", "`fence`", "line\nnext\rreturn", "carriage\rreturn", "\\|<script>&中文*_")
         for name in names:
             for details, known, outcome in (({}, {}, "failed"), ({name: "report"}, {}, "failed"),
                                             ({}, {name: "reason"}, "failed"), ({}, {name: "reason"}, "passed"),
@@ -260,7 +260,20 @@ class SanitizerReportTests(unittest.TestCase):
                     self.assertEqual(rows[0].count("|"), 3 if known and outcome or details else 2)
                     encoded = rows[0].split("<code>", 1)[1].split("</code>", 1)[0]
                     self.assertEqual(html.unescape(encoded), name.replace("\r", r"\r").replace("\n", r"\n"))
+                    self.assertRegex(encoded, r"\A(?:[^\W_]| |&#\d+;)*\Z")
                     self.assertEqual(failing, outcome == "failed" and not known)
+    def test_explicit_failures_override_skipped_and_disabled_statuses(self):
+        for status in ("run", "notrun", "disabled", None):
+            for failure in ("failure", "error"):
+                for skip in ("", '<skipped/>', '<skipped message="SKIP_RETURN_CODE=77"/>'):
+                    with self.subTest(status=status, failure=failure, skip=skip):
+                        path = self.write(suite(case("contradiction", status, skip + f"<{failure}/>")))
+                        self.assertEqual(sanitizer_report.results(path), {"contradiction": "failed"})
+                        self.assertEqual(self.run_main(path)[0], 1)
+                        known = self.write_known("contradiction address tracked issue")
+                        code, stdout, _ = self.run_main(path, "--known", known, "--sanitizer", "address")
+                        self.assertEqual(code, 0)
+                        self.assertIn("1 failed (1 known)", stdout)
 
 
 
