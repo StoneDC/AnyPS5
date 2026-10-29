@@ -46,14 +46,14 @@ def release_web_files(revision):
                     value = ast.literal_eval(node.value)
             if value is not None:
                 if (isinstance(value, (tuple, list)) and value
-                        and len(value) == len(set(value))
                         and all(isinstance(item, str) and item and "\\" not in item
                                 and not item.startswith("/")
                                 and not any(part in ("..", ".", "") for part in item.split("/"))
-                                for item in value)):
+                                for item in value)
+                        and len(value) == len(set(value))):
                     return set(value)
                 raise ValueError(f"Invalid web release definition in revision: {revision}")
-    except (ValueError, SyntaxError) as error:
+    except (ValueError, SyntaxError, TypeError) as error:
         raise ValueError(f"Invalid web release definition in revision: {revision}") from error
     raise ValueError(f"Invalid web release definition in revision: {revision}")
 
