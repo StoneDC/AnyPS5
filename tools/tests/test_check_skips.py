@@ -37,6 +37,37 @@ OTHER = [
 ]
 
 
+class SkipJsonTests(unittest.TestCase):
+    def test_policy_decisions_match_text_mode(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "result.xml"
+            report.write_text('<testsuite><testcase name="agc_missing"><skipped message="unknown"/></testcase><testcase name="window"><skipped message="no display"/></testcase><testcase name="lost"><skipped message="flaky"/></testcase></testsuite>')
+            for job in ("linux", "windows"):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    status = check_skips.main([str(report), "--job", job, "--json"])
+                data = json.loads(out.getvalue())
+                self.assertEqual(status, 1)
+                decisions = {row["name"]: row["expected"] for row in data["skips"]}
+                self.assertEqual(decisions, {"agc_missing": job == "windows", "window": True, "lost": False})
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(check_skips.main([str(report), "--job", job]), status)
+            for content in ('<testsuite/>', '<testsuite><testcase name="ok"/></testsuite>'):
+                report.write_text(content)
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(check_skips.main([str(report), "--json"]), 0)
+                self.assertEqual(json.loads(out.getvalue())["skips"], [])
+            for content in ('broken', '<testsuite><testcase status="disabled"/></testsuite>'):
+                report.write_text(content)
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    check_skips.main([str(report), "--json"])
+                self.assertEqual(error.exception.code, 2)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                check_skips.main([str(report), "--json", "--list"])
+
+
 class CheckSkipsTests(unittest.TestCase):
     def test_ctest_status_and_prefixed_device_reasons_are_expected(self):
         reports = (
