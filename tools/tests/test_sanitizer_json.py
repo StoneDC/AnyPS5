@@ -30,12 +30,16 @@ class FeatureTests(unittest.TestCase):
         data = json.loads(result.stdout)
         self.assertTrue(data["unexpected_failure"])
         self.assertEqual([t["name"] for t in data["tests"]], ["okay", "skip", "界"])
+        self.assertEqual([(t["outcome"], t["unexpected"]) for t in data["tests"]],
+                         [("passed", False), ("skipped", False), ("failed", True)])
         self.assertIn("AddressSanitizer", data["tests"][2]["report"])
         summary = self.root / "summary.txt"
         result = self.cli("sanitizer_report.py", source, "--json", "--known", known, "--sanitizer", "address", "--summary", summary)
         self.assertEqual(result.returncode, 0, result.stderr)
         data = json.loads(result.stdout)
         self.assertFalse(data["unexpected_failure"])
+        self.assertEqual([(t["name"], t["outcome"], t["unexpected"]) for t in data["tests"]],
+                         [("okay", "passed", False), ("skip", "skipped", False), ("界", "failed", False)])
         self.assertEqual(data["known_not_run"], ["missing"])
         self.assertEqual(data["tests"][2]["known_reason"], "tracked issue")
         self.assertIn("1 known", summary.read_text())
