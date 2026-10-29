@@ -210,7 +210,7 @@ def main(argv=None):
             label = f"Catalog entry {number} ({entry.get('patch')!r})"
             try:
                 patch, targets, catalog_metadata = validate_entry(args.catalog.resolve(), entry)
-            except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
+            except (OSError, ValueError, RecursionError, tomllib.TOMLDecodeError) as error:
                 print(f"{label}: rejected: {error}")
                 continue
             errors = []
