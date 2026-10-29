@@ -14,6 +14,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check_test_registration
 
 
+class RegistrationJsonTests(unittest.TestCase):
+    def test_real_cmake_executable_report(self):
+        import json
+        import shutil
+        self.assertIsNotNone(shutil.which("cmake"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tests").mkdir()
+            (root / "CMakeLists.txt").write_text('cmake_minimum_required(VERSION 3.20)\nproject(fixture CXX)\nenable_testing()\nadd_subdirectory(tests)\n')
+            (root / "tests/CMakeLists.txt").write_text('add_executable(covered main.cpp)\nadd_executable(lost main.cpp)\nadd_test(NAME covered COMMAND covered)\n')
+            (root / "tests/main.cpp").write_text('int main() { return 0; }\n')
+            build = root / "build"
+            subprocess.run(["cmake", "-S", str(root), "-B", str(build), "-G", "Ninja"], check=True, capture_output=True)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(check_test_registration.main([str(build), "--json"]), 1)
+            data = json.loads(output.getvalue())
+            self.assertEqual(data["registered"], ["covered"])
+            self.assertEqual(data["new_unregistered"], ["lost"])
+            with patch.object(check_test_registration, "KNOWN_UNRUN", {"lost"}), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(check_test_registration.main([str(build), "--json"]), 0)
+
+    def test_real_git_script_report(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", directory], check=True)
+            (root / "tools").mkdir()
+            (root / "tools/test_a.py").write_text('pass\n')
+            (root / "tools/test_b.py").write_text('pass\n')
+            (root / "CMakeLists.txt").write_text('add_test(NAME a COMMAND python tools/test_a.py)\n')
+            output = io.StringIO()
+            with patch.object(check_test_registration, "__file__", str(root / "tools/tool.py")), contextlib.redirect_stdout(output):
+                self.assertEqual(check_test_registration.main(["--scripts", "--json"]), 1)
+            data = json.loads(output.getvalue())
+            self.assertEqual(data["registered"], ["tools/test_a.py"])
+            self.assertEqual(data["unregistered"], ["tools/test_b.py"])
+
+
 class RegistrationTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("cmake"), "CMake is required for the argument oracle")
     def test_quoted_semicolons_match_real_cmake_arguments(self):
