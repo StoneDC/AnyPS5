@@ -696,6 +696,7 @@ class WebReleaseValidationTests(unittest.TestCase):
             r'WEB_FILES = ("nested\\backslash",)',
             'WEB_FILES = ("nested/./current",)',
             'WEB_FILES = [1, 2]',
+            'WEB_FILES = ([1],)',
             'WEB_FILES = None',
         )
         for code in definitions:
