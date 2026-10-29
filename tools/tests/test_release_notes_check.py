@@ -31,6 +31,15 @@ class FeatureTests(unittest.TestCase):
         body.write_text("stale")
         self.assertEqual(self.cli("prepare_release_notes.py", *args, "--check").returncode, 1)
         self.assertEqual(body.read_text(), "stale")
+        body.write_bytes(before[body.name][0])
+        full.write_bytes(b"stale full output")
+        stale = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.iterdir()}
+        self.assertEqual(self.cli("prepare_release_notes.py", *args, "--check").returncode, 1)
+        self.assertEqual(stale, {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.iterdir()})
+        full.unlink()
+        missing = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.iterdir()}
+        self.assertEqual(self.cli("prepare_release_notes.py", *args, "--check").returncode, 1)
+        self.assertEqual(missing, {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.iterdir()})
 
     def test_missing_outputs_are_not_created_and_bad_json_is_an_error(self):
         source = self.root / "response.json"
