@@ -10,6 +10,44 @@ from test_suggest_patches import suggest_patches, VERIFIED
 
 
 class PatchAdvisorJsonTests(unittest.TestCase):
+    def run_json(self, *extra, **run):
+        output = io.StringIO()
+        with patch.object(suggest_patches.subprocess, "run", **run), contextlib.redirect_stdout(output):
+            code = self.advise("--json", *extra)
+        return code, json.loads(output.getvalue())
+
+    def test_json_records_every_decision(self):
+        verified = subprocess.CompletedProcess([], 0, VERIFIED, "warn")
+        self.entry["id"] = "fix"
+        other = dict(self.entry, id="other")
+        stale = dict(self.entry, targets={"Media/Modules/module.prx": "0" * 64})
+        invalid = dict(self.entry, category="unknown")
+        self.write_index([self.entry, stale, invalid, other, other, dict(self.entry, id="slow")])
+        code, data = self.run_json(side_effect=[verified, verified, verified, subprocess.TimeoutExpired([], 7)])
+        self.assertEqual(code, 0)
+        self.assertEqual(data["status"], "recommended")
+        self.assertEqual(data["recommended_entry"], 1)
+        first, second, third, fourth, fifth, sixth = data["entries"]
+        self.assertEqual(first, {"number": 1, "patch": "patch.toml", "status": "verified",
+                                 "targets": self.entry["targets"], "metadata": {"id": "fix"},
+                                 "verification": {"exit_code": 0, "summary": [1, 1, 0, 0],
+                                                  "stdout": VERIFIED, "stderr": "warn"}})
+        self.assertEqual((second["status"], second["reason"].startswith("Media/Modules/module.prx")), ("rejected", True))
+        self.assertEqual((third["status"], third["reason"]), ("rejected", "invalid category"))
+        for record in (fourth, fifth):
+            self.assertEqual((record["status"], record["reason"]), ("rejected", "duplicate verified id 'other'"))
+        self.assertEqual((sixth["status"], sixth["reason"]), ("rejected", "verification_timeout"))
+
+    def test_json_failure_statuses(self):
+        self.write_index([dict(self.entry, contentVersion="02.000.000")])
+        self.assertEqual(self.run_json(), (1, {"status": "no_match", "entries": []}))
+        self.write_index()
+        code, data = self.run_json(return_value=subprocess.CompletedProcess([], 2, "", "FAIL: invalid patch"))
+        self.assertEqual((code, data["status"], data["error"]), (2, "error", "relinker errors occurred"))
+        self.param.write_text("[]")
+        self.assertEqual(self.run_json(), (2, {"status": "error", "entries": [], "error": "param.json must be an object"}))
+
+
     setUp = fixtures.PatchAdvisorTests.setUp
     write_index = fixtures.PatchAdvisorTests.write_index
     advise = fixtures.PatchAdvisorTests.advise

@@ -235,7 +235,7 @@ def main(argv=None):
             label = f"Catalog entry {number} ({entry.get('patch')!r})"
             try:
                 patch, targets, catalog_metadata = validate_entry(args.catalog.resolve(), entry)
-            except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
+            except (OSError, ValueError, RecursionError, tomllib.TOMLDecodeError) as error:
                 record["reason"] = str(error)
                 emit(f"{label}: rejected: {error}")
                 continue
@@ -332,7 +332,7 @@ def main(argv=None):
             return finish(2, "error", "relinker errors occurred")
         emit(f"{prefix}: no catalog entry passed all checks.")
         return finish(1, "rejected")
-    except (OSError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+    except (OSError, ValueError, RecursionError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
         emit(f"Patch advisor: {error}", file=sys.stderr)
         return finish(2, "error", error)
 
