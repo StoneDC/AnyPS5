@@ -1,4 +1,5 @@
 import argparse
+import csv
 import hashlib
 import io
 import json
@@ -231,8 +232,11 @@ def main(argv=None):
     parser.add_argument("output", type=Path)
     parser.add_argument("--ref", default="HEAD", help="branch or commit whose first-parent history is measured")
     parser.add_argument("--cache", type=Path, help="reuse per-commit counts while the scanner, ISA list and Python version match")
+    parser.add_argument("--csv", action="store_true", help="also write history.csv with the measured JSON points")
     args = parser.parse_args(argv)
     outputs = [args.output / name for name in ("history.json", "history.svg", "history.html")]
+    if args.csv:
+        outputs.append(args.output / "history.csv")
     try:
         for index, path in enumerate(outputs):
             for other in outputs[index + 1:]:
@@ -252,6 +256,14 @@ def main(argv=None):
         (args.output / "history.json").write_text(json.dumps(points, indent=2), encoding="utf-8")
         (args.output / "history.svg").write_text(chart(points) + "\n", encoding="utf-8")
         (args.output / "history.html").write_text(page(points), encoding="utf-8")
+        if args.csv:
+            with (args.output / "history.csv").open("w", encoding="utf-8", newline="") as output:
+                writer = csv.writer(output)
+                writer.writerow(["date", "commit"] + [f"{name}_{key}" for name, _, _ in SERIES
+                                                      for key in ("done", "total", "percent")])
+                writer.writerows([point["date"], point["commit"]] +
+                                 [point[name][key] for name, _, _ in SERIES for key in ("done", "total", "percent")]
+                                 for point in points)
     except OSError as error:
         parser.error(f"{error.filename or args.output}: {error.strerror or error}")
     print(f"{len(points)} days, {points[0]['date']} .. {points[-1]['date']}")

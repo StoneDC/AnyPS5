@@ -30,6 +30,59 @@ def commit(root, day, message, body, time="12:00:00Z"):
                    check=True, env=env)
 
 
+class HistoryCsvTests(unittest.TestCase):
+    def test_csv_alias_and_write_failure_are_usage_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", directory], check=True)
+            commit(root, "2026-01-01", "one", "int APS5_VABI A() { return 0; }\n")
+            output = root / "reports"
+            output.mkdir()
+            with patch.multiple(progress, ROOT=root, PRX=root / "core/libs/prx", OPCODES=root / OPCODES):
+                (output / "history.csv").mkdir()
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    progress_history.main([str(output), "--csv"])
+                self.assertEqual(error.exception.code, 2)
+                (output / "history.csv").rmdir()
+                (output / "history.json").write_bytes(b"preserve original")
+                os.link(output / "history.json", output / "history.csv")
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    progress_history.main([str(output), "--csv"])
+                self.assertEqual(error.exception.code, 2)
+                self.assertEqual((output / "history.json").read_bytes(), b"preserve original")
+
+    def test_csv_matches_real_git_json_and_cache_alias(self):
+        import csv
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", directory], check=True)
+            commit(root, "2026-01-01", "one", "int APS5_VABI A() { return 0; }\n")
+            commit(root, "2026-01-02", "two", "int APS5_VABI A() { return 0; }\nint APS5_VABI B() { return 0; }\n")
+            commit(root, "2026-01-03", "empty", "")
+            with patch.multiple(progress, ROOT=root, PRX=root / "core/libs/prx", OPCODES=root / OPCODES):
+                output = root / "reports"
+                with contextlib.redirect_stdout(io.StringIO()):
+                    progress_history.main([str(output)])
+                self.assertFalse((output / "history.csv").exists())
+                with contextlib.redirect_stdout(io.StringIO()):
+                    progress_history.main([str(output), "--csv", "--cache", str(root / "cache.json")])
+                points = json.loads((output / "history.json").read_text())
+                with (output / "history.csv").open(newline="") as stream:
+                    rows = list(csv.DictReader(stream))
+                self.assertEqual(len(rows), 3)
+                self.assertEqual(points[-1]["libraries"], {"done": 0, "total": 0, "percent": 0})
+                for row, point in zip(rows, points):
+                    self.assertEqual(row["date"], point["date"])
+                    self.assertEqual(row["commit"], point["commit"])
+                    for name in ("libraries", "shaders"):
+                        for key in ("done", "total", "percent"):
+                            self.assertEqual(float(row[f"{name}_{key}"]), point[name][key])
+                original = (output / "history.csv").read_bytes()
+                with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                    progress_history.main([str(output), "--csv", "--cache", str(output / "history.csv")])
+                self.assertEqual((output / "history.csv").read_bytes(), original)
+
+
 class HistoryReportOutputTests(unittest.TestCase):
     def test_report_output_errors_are_usage_errors_and_allow_retry(self):
         with tempfile.TemporaryDirectory() as directory:
