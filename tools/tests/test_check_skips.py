@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import contextlib
 import io
@@ -458,6 +459,29 @@ class NotRunTests(unittest.TestCase):
 
 
 class SkipJsonTests(unittest.TestCase):
+    def test_duplicate_names_preserve_occurrences_reasons_and_policy(self):
+        report_text = '<testsuite>' + ''.join(
+            f'<testcase name="{name}"><skipped message="{reason}"/></testcase>'
+            for name, reason in (("a", "no display"), ("a", "flaky"), ("b", "no display"), ("c", "flaky"), ("c", "flaky"))) + '</testsuite>'
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "duplicates.xml"
+            report.write_text(report_text, encoding="utf-8")
+            for job in ("linux", "windows"):
+                with self.subTest(job=job):
+                    text, output = io.StringIO(), io.StringIO()
+                    with contextlib.redirect_stdout(text):
+                        self.assertEqual(check_skips.main([str(report), "--job", job]), 1)
+                    with contextlib.redirect_stdout(output):
+                        self.assertEqual(check_skips.main([str(report), "--job", job, "--json"]), 1)
+                    self.assertEqual(text.getvalue().count("error: c skipped"), 2)
+                    self.assertEqual(json.loads(output.getvalue()), {
+                        "job": job,
+                        "skips": [
+                            {"name": "a", "output": "skipped, flaky\n\n\nskipped, no display\n\n", "occurrences": 2, "expected": False},
+                            {"name": "b", "output": "skipped, no display\n\n", "occurrences": 1, "expected": True},
+                            {"name": "c", "output": "skipped, flaky\n\n\nskipped, flaky\n\n", "occurrences": 2, "expected": False}],
+                        "unexpected": ["a", "c", "c"]})
+
     def test_policy_decisions_match_text_mode(self):
         import json
         with tempfile.TemporaryDirectory() as directory:
