@@ -1,3 +1,4 @@
+import json
 import contextlib
 import io
 import sys
@@ -419,6 +420,23 @@ class EnvReferenceTests(unittest.TestCase):
 
 
 class EnvironmentJsonTests(unittest.TestCase):
+    def test_each_documentation_difference_fails_alone_and_lists_are_sorted(self):
+        names = ["APS5_F", "APS5_B", "APS5_E", "APS5_A", "APS5_D", "APS5_C"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a.cpp").write_text("".join(f'auto v{index} = EnvInt("{name}", 1);\n' for index, name in enumerate(names)), encoding="utf-8")
+            doc = root / "reference.md"
+            stale = [name + "_OLD" for name in names]
+            for text, missing, extra in ((" ".join(f"`{name}`" for name in names + stale), [], sorted(stale)), ("", sorted(names), [])):
+                doc.write_text(text, encoding="utf-8")
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    status = env_reference.main(["--root", str(root), "--check", "--doc", str(doc), "--json"])
+                data = json.loads(output.getvalue())
+                self.assertEqual(status, 1)
+                self.assertEqual(data["documentation"], {"path": str(doc), "missing": missing, "stale": extra})
+                self.assertEqual([variable["name"] for variable in data["variables"]], sorted(names))
+
     def test_sites_and_documentation_differences(self):
         import json
         with tempfile.TemporaryDirectory() as directory:
