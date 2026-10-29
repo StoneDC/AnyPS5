@@ -1894,11 +1894,15 @@ static void CheckMissingClassificationExports() {
     Require(isnanf_nid_postfix(0.f) == 0 && isnanf_nid_postfix(-1.f) == 0);
 
     const long double negativeNan = std::copysign(std::numeric_limits<long double>::quiet_NaN(), -1.L);
-    Require(__signbitl_nid_postfix(0.L) == 0 && __signbitl_nid_postfix(-0.L) == 1);
-    Require(__signbitl_nid_postfix(1.L) == 0 && __signbitl_nid_postfix(-1.L) == 1);
+    Require(__signbitl_nid_postfix(0.L) == 0 && __signbitl_nid_postfix(-0.L) == 0x8000);
+    Require(__signbitl_nid_postfix(1.L) == 0 && __signbitl_nid_postfix(-1.L) == 0x8000);
     Require(__signbitl_nid_postfix(std::numeric_limits<long double>::infinity()) == 0);
-    Require(__signbitl_nid_postfix(-std::numeric_limits<long double>::infinity()) == 1);
-    Require(__signbitl_nid_postfix(negativeNan) == 1);
+    Require(__signbitl_nid_postfix(-std::numeric_limits<long double>::infinity()) == 0x8000);
+    Require(__signbitl_nid_postfix(negativeNan) == 0x8000);
+    Require(__signbit_nid_postfix(0.0) == 0 && __signbit_nid_postfix(-0.0) == 0x8000 && __signbit_nid_postfix(-1e-310) == 0x8000);
+    Require(__signbit_nid_postfix(std::copysign(std::numeric_limits<double>::quiet_NaN(), -1.0)) == 0x8000);
+    Require(__signbitf_nid_postfix(1.f) == 0 && __signbitf_nid_postfix(-0.f) == 0x8000 && __signbitf_nid_postfix(-infinity) == 0x8000);
+    Require(__signbitf_nid_postfix(nan) == 0 && __signbitf_nid_postfix(std::copysign(nan, -1.f)) == 0x8000);
 }
 
 static void CheckFloatMathExports() {

@@ -390,6 +390,29 @@ class ReleasePackageTests(unittest.TestCase):
                 package_release.windows_runtime(Path(tmp))
 
 
+    def test_native_and_web_zip_timestamps_are_clamped_without_changing_files(self):
+        import os
+        for timestamp, year in ((0, 1980), (7258118400, 2107)):
+            with self.subTest(timestamp=timestamp):
+                web = self.build / "web"
+                web.mkdir(exist_ok=True)
+                for name in package_release.WEB_FILES:
+                    (web / name).parent.mkdir(parents=True, exist_ok=True)
+                    (web / name).write_bytes(b"web fixture")
+                    os.utime(web / name, (timestamp, timestamp))
+                os.utime(self.library, (timestamp, timestamp))
+                before = self.library.stat().st_mtime_ns
+                package_release.package("linux", self.build, self.output, "v1")
+                package_release.package_web(self.build, self.output, "v1", "a" * 40)
+                for asset, member, contents in (("prx-linux-v1.zip", "libs/libc.prx", b"library bytes"),
+                                                 ("web-v1.zip", package_release.WEB_FILES[0], b"web fixture")):
+                    with zipfile.ZipFile(self.output / asset) as archive:
+                        self.assertEqual(archive.getinfo(member).date_time[0], year)
+                        self.assertEqual(archive.read(member), contents)
+                self.assertEqual(self.library.stat().st_mtime_ns, before)
+                self.assertEqual((web / package_release.WEB_FILES[0]).stat().st_mtime, timestamp)
+
+
 
 class DocumentationAssetsTests(unittest.TestCase):
     def test_source_copy_failure_does_not_publish_partial_documents(self):
