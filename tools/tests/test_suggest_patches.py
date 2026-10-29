@@ -130,6 +130,31 @@ class PatchAdvisorTests(unittest.TestCase):
         self.assertEqual(self.advise(), 1)
 
     @patch.object(suggest_patches.subprocess, "run")
+    def test_excessively_nested_json_is_a_usage_error(self, run):
+        depth = sys.getrecursionlimit() + 64
+        for _ in range(8):
+            try:
+                json.loads("[" * depth + "]" * depth)
+            except RecursionError:
+                break
+            depth *= 2
+        else:
+            self.fail("JSON decoder accepted every bounded nesting probe")
+        nested = "[" * (depth + 128) + "]" * (depth + 128)
+        for target in (self.param, self.catalog / "index.json"):
+            with self.subTest(target=target.name):
+                original = target.read_text(encoding="utf-8")
+                target.write_text(nested, encoding="utf-8")
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr):
+                    self.assertEqual(self.advise(), 2)
+                self.assertTrue(stderr.getvalue().startswith("Patch advisor: "), stderr.getvalue())
+                self.assertNotIn("param.json must be an object", stderr.getvalue())
+                self.assertNotIn("catalog must have format 1", stderr.getvalue())
+                run.assert_not_called()
+                target.write_text(original, encoding="utf-8")
+
+    @patch.object(suggest_patches.subprocess, "run")
     def test_catalog_cannot_escape_directory(self, run):
         self.entry["patch"] = "../outside.toml"
         self.write_index()

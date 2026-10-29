@@ -296,7 +296,7 @@ def main(argv=None):
             return 2
         print(f"{prefix}: no catalog entry passed all checks.")
         return 1
-    except (OSError, ValueError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+    except (OSError, ValueError, RecursionError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
         print(f"Patch advisor: {error}", file=sys.stderr)
         return 2
 
