@@ -40,5 +40,19 @@ class RelinkerFuzzConfigurationsTests(unittest.TestCase):
                         self.assertEqual(selectors, {0, 1, 2, 4})
 
 
+    def test_all_configurations_reports_invalid_output_without_traceback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            existing = Path(directory) / "existing.bin"
+            existing.write_bytes(b"preserve output")
+            for output in (existing, existing / "child"):
+                with self.subTest(output=output):
+                    result = subprocess.run([sys.executable, relinker_fuzz_seeds.__file__, str(output), "--all-configurations"],
+                                            capture_output=True, text=True, timeout=5)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(existing.read_bytes(), b"preserve output")
+
+
 if __name__ == "__main__":
     unittest.main()
