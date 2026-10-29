@@ -33,6 +33,50 @@ def pr(title="fix: x", body="", labels=()):
     return {"number": 7, "title": title, "body": body, "labels": list(labels), "state": "open"}
 
 
+class LabelPlanJsonTests(unittest.TestCase):
+    def test_batch_error_is_reported_and_later_items_continue(self):
+        import subprocess
+        records = [{"number": n, "title": "fix(core): example", "body": "", "labels": [], "state": "open"} for n in (1, 2)]
+        def process(repo, pr, dry_run, comment):
+            self.assertTrue(dry_run)
+            self.assertFalse(comment)
+            if pr["number"] == 1:
+                raise subprocess.CalledProcessError(1, ["gh"], stderr="read failed")
+            return set(), set(), False
+        output = io.StringIO()
+        with patch.object(pr_labels, "repository", return_value="test/repo"), patch.object(pr_labels, "gh", return_value=json.dumps(records)), patch.object(pr_labels, "process", side_effect=process) as run, contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(pr_labels.main(["--all", "--dry-run", "--json"]), 1)
+        data = json.loads(output.getvalue())
+        self.assertEqual(data["failed"], [1])
+        self.assertEqual(len(data["plans"]), 2)
+        self.assertEqual(data["plans"][0]["error"], "read failed")
+        self.assertEqual(run.call_count, 2)
+
+    def test_json_requires_dry_run_before_any_access(self):
+        with patch.object(pr_labels, "gh", side_effect=AssertionError("unexpected access")), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            pr_labels.main(["--pr", "42", "--json"])
+        self.assertEqual(error.exception.code, 2)
+
+    def test_plan_reads_only_and_records_comment(self):
+        data = {"number": 42, "title": "perf(core): reduce work", "body": "", "labels": [], "state": "open"}
+        calls = []
+        def gh(*args):
+            calls.append(args)
+            if args == ("api", "repos/test/repo/pulls/42"):
+                return json.dumps(data)
+            if args[:2] == ("api", "--paginate"):
+                return "0"
+            raise AssertionError(args)
+        output = io.StringIO()
+        with patch.object(pr_labels, "repository", return_value="test/repo"), patch.object(pr_labels, "gh", side_effect=gh), contextlib.redirect_stdout(output):
+            self.assertEqual(pr_labels.main(["--pr", "42", "--dry-run", "--json"]), 0)
+        row = json.loads(output.getvalue())["plans"][0]
+        self.assertEqual(row["add"], sorted([pr_labels.PERF_LABEL, pr_labels.MISSING_LABEL]))
+        self.assertEqual(row["remove"], [])
+        self.assertEqual(row["comment_marker"], pr_labels.MARKER)
+        self.assertEqual(len(calls), 2)
+
+
 class TitleIdTests(unittest.TestCase):
     def test_forms(self):
         cases = [
