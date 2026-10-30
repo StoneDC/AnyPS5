@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
-#include <vector>
 
 static void Require(bool condition) {
     if (!condition) {
@@ -61,11 +60,6 @@ public:
         return reinterpret_cast<T*>(allocation + page * 2 - (std::max)(count, std::size_t{1}) * sizeof(T));
     }
 };
-
-template<class T>
-static void Prefix(const T* data) {
-    for (int index = 1; index <= 8; ++index) Require(data[-index] == static_cast<T>(sizeof(T) == 1 ? 0xa5 : 0xa5a5));
-}
 
 int main() {
     Buffer input;
