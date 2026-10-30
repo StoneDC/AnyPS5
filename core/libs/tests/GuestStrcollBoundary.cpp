@@ -1,12 +1,9 @@
 #include "prx/libc/include/Api.hpp"
 #include <algorithm>
-#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <string>
 #include <vector>
 
 static void Require(bool condition) {
@@ -61,11 +58,6 @@ public:
         return reinterpret_cast<T*>(allocation + page * 2 - (std::max)(count, std::size_t{1}) * sizeof(T));
     }
 };
-
-template<class T>
-static void Prefix(const T* data) {
-    for (int index = 1; index <= 8; ++index) Require(data[-index] == static_cast<T>(sizeof(T) == 1 ? 0xa5 : 0xa5a5));
-}
 
 static int Sign(int value) {
     return (value > 0) - (value < 0);
