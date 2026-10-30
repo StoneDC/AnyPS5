@@ -58,6 +58,7 @@ public:
     template<class T = unsigned char>
     T* At(std::size_t count) {
         Require(count <= (page - 32) / sizeof(T));
+        std::memset(allocation + page, 0xa5, page);
         return reinterpret_cast<T*>(allocation + page * 2 - (std::max)(count, std::size_t{1}) * sizeof(T));
     }
 };
@@ -83,9 +84,22 @@ int main() {
             const std::u16string setSaved(set, size + 1);
             const char16_t* expected = nullptr;
             for (std::size_t i = 0; i < length; ++i) if (members[saved[i]]) { expected = source + i; break; }
+            const auto preserved = [&] {
+                Require(std::equal(saved.begin(), saved.end(), source));
+                Require(std::equal(setSaved.begin(), setSaved.end(), set));
+                Prefix(source);
+                Prefix(set);
+            };
             Require(wcspbrk_nid_postfix(source, set) == expected);
-            Require(std::equal(saved.begin(), saved.end(), source));
-            Require(std::equal(setSaved.begin(), setSaved.end(), set));
+            preserved();
+            std::size_t accepted = 0;
+            while (accepted < length && members[saved[accepted]]) ++accepted;
+            Require(wcsspn_nid_postfix(source, set) == accepted);
+            preserved();
+            std::size_t excluded = 0;
+            while (excluded < length && !members[saved[excluded]]) ++excluded;
+            Require(wcscspn_nid_postfix(source, set) == excluded);
+            preserved();
         }
     }
 }
