@@ -62,11 +62,6 @@ public:
     }
 };
 
-template<class T>
-static void Prefix(const T* data) {
-    for (int index = 1; index <= 8; ++index) Require(data[-index] == static_cast<T>(sizeof(T) == 1 ? 0xa5 : 0xa5a5));
-}
-
 int main() {
     Buffer input, accept;
     for (std::size_t count = 0; count <= 128; ++count) {
