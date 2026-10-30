@@ -456,6 +456,8 @@ if(BUILD_TESTING)
         endforeach()
         add_test(NAME conventions_pr_template COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/test_check_conventions_pr_template.py)
+        add_test(NAME tools_stub_preview COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/tests/test_preview_stubs.py)
+        set_tests_properties(tools_stub_preview PROPERTIES TIMEOUT 20)
         add_test(NAME check_compile_preprocessor COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/test_check_compile_preprocessor.py)
         set_tests_properties(check_compile_preprocessor PROPERTIES TIMEOUT 20)
