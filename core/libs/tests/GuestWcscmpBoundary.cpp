@@ -62,11 +62,6 @@ public:
     }
 };
 
-template<class T>
-static void Prefix(const T* data) {
-    for (int index = 1; index <= 8; ++index) Require(data[-index] == static_cast<T>(sizeof(T) == 1 ? 0xa5 : 0xa5a5));
-}
-
 static int Sign(int value) {
     return (value > 0) - (value < 0);
 }
