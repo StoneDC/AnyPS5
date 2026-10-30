@@ -249,6 +249,8 @@ def main(argv=None):
         outputs.append(args.output / "history.csv")
     try:
         for index, path in enumerate(outputs):
+            if (path.exists() or path.is_symlink()) and not path.is_file():
+                raise ValueError(f"{path}: report destination must be a regular file")
             for other in outputs[index + 1:]:
                 if (path.exists() and other.exists() and path.samefile(other)) or same_location(path, other):
                     raise ValueError(f"generated reports cannot alias each other: {path.name} and {other.name}")
