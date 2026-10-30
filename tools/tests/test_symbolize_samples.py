@@ -69,6 +69,10 @@ def build_pe(path, with_symbols=True, with_exports=False, second_code=False, tim
 
 
 class SymbolizeSamplesTests(unittest.TestCase):
+    def test_json_loop_errors_preserve_files_with_matching_window(self):
+        self.check_loop_errors_preserve_files("--json")
+        self.check_loop_errors_preserve_files("--json", "--require-matching-window")
+
     def check_loop_errors_preserve_files(self, *flags):
         record = f"# module libSceAgcDriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n"
         later, earlier, output, loop = [self.root / name for name in ("loop-later.txt", "loop-earlier.txt", "loop-output.txt", "simulated-loop")]
