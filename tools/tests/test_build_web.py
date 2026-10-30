@@ -600,8 +600,9 @@ class WebReleaseValidationTests(unittest.TestCase):
         missing = library_zip([*valid[1:], ("web-release.json", metadata)])
         duplicate = library_zip([*valid, valid[0], ("web-release.json", metadata)])
         for name, archive in (("unexpected", unexpected), ("missing", missing), ("duplicate", duplicate)):
-            with self.subTest(case=name), patch.object(build_web, "release_web_files", return_value=set(self.HISTORICAL_FILES)):
-                with self.assertRaisesRegex(ValueError, "Invalid web release archive layout"):
+            with self.subTest(case=name):
+                with patch.object(build_web, "release_web_files", return_value=set(self.HISTORICAL_FILES)), \
+                        self.assertRaisesRegex(ValueError, "Invalid web release archive layout"):
                     self.publish(archive, tag="v0.1.3")
 
     def test_unavailable_historical_revision_fails_cleanly_without_traceback_or_site_mutation(self):
