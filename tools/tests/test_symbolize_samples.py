@@ -1,4 +1,5 @@
 import contextlib
+import errno
 import io
 import os
 import subprocess
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import symbolize_samples
@@ -67,6 +69,40 @@ def build_pe(path, with_symbols=True, with_exports=False, second_code=False, tim
 
 
 class SymbolizeSamplesTests(unittest.TestCase):
+    def check_loop_errors_preserve_files(self, *flags):
+        record = f"# module libSceAgcDriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n"
+        later, earlier, output, loop = [self.root / name for name in ("loop-later.txt", "loop-earlier.txt", "loop-output.txt", "simulated-loop")]
+        later.write_text(record + "libSceAgcDriver.prx+0x1011 7\n", encoding="utf-8")
+        earlier.write_text(record + "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
+        output.write_bytes(b"previous output")
+        loop.write_bytes(b"loop target sentinel")
+        before = {path: path.read_bytes() for path in (later, earlier, output, loop)}
+        original_open, original_resolve = open, Path.resolve
+        def open_path(path, *args, **kwargs):
+            if isinstance(path, (str, os.PathLike)) and Path(path) == loop:
+                raise OSError(errno.ELOOP, "Too many levels of symbolic links", str(loop))
+            return original_open(path, *args, **kwargs)
+        def resolve(path, *args, **kwargs):
+            if path == loop:
+                raise RuntimeError("Symlink loop from " + str(loop))
+            return original_resolve(path, *args, **kwargs)
+        for role in ("samples", "since", "out"):
+            with self.subTest(role=role, flags=flags):
+                source, baseline, destination = (loop if role == "samples" else later), (loop if role == "since" else earlier), (loop if role == "out" else output)
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with patch.object(Path, "resolve", resolve), patch("builtins.open", open_path), \
+                        contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+                    symbolize_samples.main([str(source), "--since", str(baseline), "--libs", str(self.libs), "--out", str(destination), *flags])
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn("error:", stderr.getvalue())
+                self.assertIn("simulated-loop", stderr.getvalue())
+                self.assertNotIn("Traceback", stderr.getvalue())
+                self.assertEqual({path: path.read_bytes() for path in before}, before)
+
+    def test_loop_errors_preserve_files_with_matching_window(self):
+        self.check_loop_errors_preserve_files()
+        self.check_loop_errors_preserve_files("--require-matching-window")
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
