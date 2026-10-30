@@ -10,6 +10,23 @@ from test_suggest_patches import suggest_patches, VERIFIED
 
 
 class PatchAdvisorJsonTests(unittest.TestCase):
+    def test_json_directory_resolution_errors_are_controlled(self):
+        original = suggest_patches.Path.resolve
+        windows_loop = OSError(22, "The name of the file cannot be resolved by the system", "loop")
+        windows_loop.winerror = 1921
+        for option in ("--catalog", "--sce-module-path"):
+            target = self.root / "directory-loop"
+            for failure in (RuntimeError("Symlink loop from fixture directory"), windows_loop):
+                with self.subTest(option=option, failure=type(failure).__name__):
+                    def resolve(path, *args, **kwargs):
+                        if path == target:
+                            raise failure
+                        return original(path, *args, **kwargs)
+                    with patch.object(suggest_patches.Path, "resolve", resolve):
+                        code, data = self.run_json(option, str(target), side_effect=AssertionError("verification ran"))
+                    self.assertEqual((code, data["status"], data["entries"]), (2, "error", []))
+                    self.assertIn("Symlink loop", data["error"])
+
     def test_nonfinite_catalog_and_parameters_emit_strict_json_errors(self):
         def reject_constant(value):
             raise ValueError("non-standard JSON token: " + value)
