@@ -743,11 +743,13 @@ class SymbolizeSamplesTests(unittest.TestCase):
                                    frames.format(count=4), encoding="utf-8")
                 later.write_text(f"# module libsceagcdriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n" +
                                  frames.format(count=7), encoding="utf-8")
-                lines, errors = self.run_main(later, "--libs", self.libs, "--since", earlier,
-                                              "--require-matching-window")
-                self.assertIn("3 samples", "\n".join(lines))
-                self.assertIn("libSceAgcDriver.prx!short", "\n".join(lines))
-                self.assertEqual(errors, "")
+                result = subprocess.run([sys.executable, symbolize_samples.__file__, str(later),
+                                         "--libs", str(self.libs), "--since", str(earlier),
+                                         "--require-matching-window"], capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("3 samples", result.stdout)
+                self.assertIn("libSceAgcDriver.prx!short", result.stdout)
+                self.assertEqual(result.stderr, "")
                 later.write_text(f"# module libsceagcdriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP + 1:#x}\n" +
                                  frames.format(count=7), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, "libSceAgcDriver.prx: module identity differs"):
