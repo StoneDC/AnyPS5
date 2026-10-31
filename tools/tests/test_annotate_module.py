@@ -93,7 +93,7 @@ def build_module(tags=DEFAULT_TAGS, values=None, symbols=DEFAULT_SYMBOLS, reloca
 
 
 def instruction(listing, mnemonic):
-    pattern = re.compile(r"^\s*[0-9a-f]+:\s+(?:\w+\s+)?%s\b" % mnemonic)
+    pattern = re.compile(r"^\s*[0-9a-f]+:\s+(?:\w+\s+)*%s\b" % mnemonic)
     return next(line for line in listing if pattern.search(line))
 
 
@@ -104,6 +104,14 @@ def with_relocation(module, table_offset, index, slot, symbol_index, kind):
 
 
 class ImportRelocationTests(unittest.TestCase):
+    def test_symbol_entry_size_must_match_elf64(self):
+        for size in (None, 0, 16, 32):
+            with self.subTest(size=size):
+                tags = tuple(tag for tag in DEFAULT_TAGS if tag != 11 or size is not None)
+                data = build_module(tags=tags, values={} if size is None else {11: size})
+                with self.assertRaisesRegex(annotate_module.ModuleError, "DT_SYMENT"):
+                    annotate_module.Module(data)
+
     def test_tables_cannot_read_file_padding_past_the_load_segment(self):
         for tag in (5, 6, 23):
             with self.subTest(tag=tag):
@@ -260,6 +268,45 @@ class AnnotateModuleTests(unittest.TestCase):
     def test_prefixed_stub_is_recognised(self):
         self.annotate(build_module(code=code_bytes(b"\xf2")))
         self.assertTrue(instruction(self.read(".asm").splitlines(), "call").endswith("; -> " + IMPORT_NAME))
+
+    def test_eip_relative_stubs_and_calls_use_wrapped_got_addresses(self):
+        for address in (CODE_ADDRESS, 0xFFFFF000, 0x100001000):
+            for prefix in (b"\x67", b"\xf2\x67", b"\x3e\x67", b"\xf2\x3e\x67"):
+                with self.subTest(address=address, prefix=prefix):
+                    length = len(prefix) + 6
+                    code = prefix + b"\xff\x25" + struct.pack("<I", (SLOT - address - length) & 0xFFFFFFFF)
+                    code += b"\xe8" + struct.pack("<i", -length - 5) + b"\xc3"
+                    module = bytearray(build_module(code=code))
+                    struct.pack_into("<Q", module, 64 + 16, address)
+                    summary = self.annotate(bytes(module))
+                    self.assertIn("1 imports, 1 exports, 0 tls, 1 stubs", summary)
+                    listing = self.read(".asm").splitlines()
+                    self.assertTrue(instruction(listing, "jmp").endswith("; GOT " + IMPORT_NAME))
+                    self.assertTrue(instruction(listing, "call").endswith("; -> " + IMPORT_NAME))
+
+    def test_eip_references_do_not_name_the_unwrapped_address(self):
+        address = 0x100001000
+        for opcode in (b"\xff\x15", b"\x48\x8b\x05"):
+            with self.subTest(opcode=opcode):
+                length = 1 + len(opcode) + 4
+                code = b"\x67" + opcode + struct.pack("<I", (SLOT - address - length) & 0xFFFFFFFF) + b"\xc3"
+                symbols = DEFAULT_SYMBOLS + [(SECOND_IMPORT_NAME, 0, 0x12, 0)]
+                module = bytearray(build_module(code=code, symbols=symbols,
+                                               relocations=((SLOT, 1), (0x100000000 + SLOT, 3))))
+                struct.pack_into("<Q", module, 64 + 16, address)
+                self.annotate(bytes(module))
+                line = next(line for line in self.read(".asm").splitlines() if "(%eip)" in line)
+                self.assertTrue(line.endswith("; GOT " + IMPORT_NAME), line)
+                self.assertNotIn("; GOT " + SECOND_IMPORT_NAME, self.read(".asm"))
+
+    def test_segment_relative_operands_do_not_name_flat_import_slots(self):
+        for segment in (b"\x64", b"\x65"):
+            for address_prefix in (b"", b"\x67"):
+                with self.subTest(segment=segment, address_prefix=address_prefix):
+                    summary = self.annotate(build_module(code=code_bytes(segment + address_prefix)))
+                    self.assertIn("0 stubs", summary)
+                    self.assertNotIn("; GOT ", self.read(".asm"))
+                    self.assertNotIn("; -> ", self.read(".asm"))
 
     def test_none_relocation_does_not_annotate_a_stub_or_call(self):
         module = with_relocation(build_module(), 0x2280, 0, SLOT, 1, 0)
