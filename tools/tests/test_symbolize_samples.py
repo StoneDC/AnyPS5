@@ -679,6 +679,26 @@ class SymbolizeSamplesTests(unittest.TestCase):
         self.assertEqual(missing.returncode, 2)
         self.assertIn("needs --since", missing.stderr)
 
+    def test_strict_window_module_records_use_case_insensitive_lookup(self):
+        later, earlier = self.root / "later.txt", self.root / "earlier.txt"
+        for frames in ("libSceAgcDriver.prx+0x1011 {count}\n",
+                       "libSceAgcDriver.prx 0x1011 {count} {count}\n"):
+            with self.subTest(frames=frames):
+                earlier.write_text(f"# module LIBSCEAGCDRIVER.PRX {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n" +
+                                   frames.format(count=4), encoding="utf-8")
+                later.write_text(f"# module libsceagcdriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP:#x}\n" +
+                                 frames.format(count=7), encoding="utf-8")
+                lines, errors = self.run_main(later, "--libs", self.libs, "--since", earlier,
+                                              "--require-matching-window")
+                self.assertIn("3 samples", "\n".join(lines))
+                self.assertIn("libSceAgcDriver.prx!short", "\n".join(lines))
+                self.assertEqual(errors, "")
+                later.write_text(f"# module libsceagcdriver.prx {SIZE_OF_IMAGE:#x} {TIMESTAMP + 1:#x}\n" +
+                                 frames.format(count=7), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "libSceAgcDriver.prx: module identity differs"):
+                    symbolize_samples.validate_window(symbolize_samples.load(later),
+                                                      symbolize_samples.load(earlier))
+
 
 class CandidateModuleTests(unittest.TestCase):
     def setUp(self):
