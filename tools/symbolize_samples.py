@@ -348,8 +348,8 @@ def json_report(symbolizer, samples, top):
     return {"samples": total,
             "self": [{"symbol": name, "count": count} for name, count in self_counts.most_common(top)],
             "inclusive": [{"symbol": name, "count": count} for name, count in inclusive.most_common(top)],
-            "modules": [{"name": name, "candidate_accepted": module is not None, "identity_recorded": name in samples.headers,
-                         "identity_matches": module is not None and samples.headers.get(name) == (module.size, module.timestamp)}
+            "modules": [{"name": name, "candidate_accepted": module is not None, "identity_recorded": name.lower() in samples.headers,
+                         "identity_matches": module is not None and samples.headers.get(name.lower()) == (module.size, module.timestamp)}
                         for name, module in sorted(symbolizer.modules.items())]}
 
 

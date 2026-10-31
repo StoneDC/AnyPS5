@@ -769,6 +769,18 @@ class SymbolizeSamplesTests(unittest.TestCase):
             {"name": "libSceAgcDriver.prx", "candidate_accepted": False, "identity_recorded": True, "identity_matches": False},
             {"name": "z.dll", "candidate_accepted": False, "identity_recorded": False, "identity_matches": False}])
 
+    def test_json_module_identity_uses_case_insensitive_records(self):
+        import json
+        samples = self.root / "mixed-case.txt"
+        for timestamp in (TIMESTAMP, TIMESTAMP + 1):
+            with self.subTest(timestamp=timestamp):
+                samples.write_text(f"# module LIBSCEAGCDRIVER.PRX {SIZE_OF_IMAGE:#x} {timestamp:#x}\n"
+                                   "libSceAgcDriver.prx+0x1011 4\n", encoding="utf-8")
+                lines, _ = self.run_main(samples, "--libs", self.libs, "--json")
+                self.assertEqual(json.loads("\n".join(lines))["modules"], [
+                    {"name": "libSceAgcDriver.prx", "candidate_accepted": timestamp == TIMESTAMP,
+                     "identity_recorded": True, "identity_matches": timestamp == TIMESTAMP}])
+
 
 class CandidateModuleTests(unittest.TestCase):
     def setUp(self):
