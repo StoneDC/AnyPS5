@@ -292,9 +292,10 @@ def validate_window(later, earlier):
                 if separator:
                     modules.add(name)
     for name in sorted(modules):
-        if name not in later.headers or name not in earlier.headers:
+        key = name.lower()
+        if key not in later.headers or key not in earlier.headers:
             raise ValueError(f"{name}: matching-window validation needs module records in both captures")
-        if later.headers[name] != earlier.headers[name]:
+        if later.headers[key] != earlier.headers[key]:
             raise ValueError(f"{name}: module identity differs between captures")
     for name in ("stacks", "self_counts", "inclusive", "total"):
         before, after = getattr(earlier, name), getattr(later, name)
